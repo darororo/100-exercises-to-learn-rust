@@ -6,9 +6,16 @@
 use std::thread;
 
 pub fn sum(v: Vec<i32>) -> i32 {
-    todo!()
-}
+    let mid = v.len()/2;
+    let static_v = v.leak();
+    let (v1, v2) = static_v.split_at(mid);
+    let left_sum = thread::spawn(|| v1.iter().sum::<i32>());
+    let right_sum = thread::spawn(|| v2.iter().sum::<i32>());
 
+    left_sum.join().unwrap() + right_sum.join().unwrap()
+    
+}
+    
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,7 @@
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
+use ticket_fields::TicketDescription;
+
 // TODO: Implement the patching functionality.
 use crate::data::{Ticket, TicketDraft, TicketPatch};
 use crate::store::{TicketId, TicketStore};
@@ -35,12 +37,26 @@ impl TicketStoreClient {
         Ok(response_receiver.recv().unwrap())
     }
 
-    pub fn update(&self, ticket_patch: TicketPatch) -> Result<(), OverloadedError> {}
+    pub fn update(&self, ticket_patch: TicketPatch) -> Result<(), UpdateTicketError> {
+        let (response_sender, response_receiver) = sync_channel(1);
+        self.sender
+            .try_send(Command::Update { 
+                patch: ticket_patch, 
+                response_channel: response_sender, 
+            })
+            .map_err(|_| UpdateTicketError)?;
+
+        Ok(response_receiver.recv().unwrap())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("The store is overloaded")]
 pub struct OverloadedError;
+
+#[derive(Debug, thiserror::Error)]
+#[error("Something went wrong when updating your ticket")]
+pub struct UpdateTicketError;
 
 pub fn launch(capacity: usize) -> TicketStoreClient {
     let (sender, receiver) = sync_channel(capacity);
@@ -85,7 +101,18 @@ pub fn server(receiver: Receiver<Command>) {
                 patch,
                 response_channel,
             }) => {
-                todo!()
+                let mut ticket = store.get_mut(patch.id).unwrap();
+                if let Some(title) = patch.title {
+                    ticket.title = title;
+                }
+                if let Some(description) = patch.description {
+                    ticket.description = description;
+                }
+                if let Some(status) = patch.status {
+                    ticket.status = status;
+                }
+
+                let _ = response_channel.send(());
             }
             Err(_) => {
                 // There are no more senders, so we can safely break
